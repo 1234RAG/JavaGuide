@@ -828,65 +828,84 @@ public class SynchronizedDemo {
 > 为了更好理解这个方法，借用 Stack Overflow 上的一个案例，可以更好地理解 `lockInterruptibly()` 可以响应中断：
 >
 > ```JAVA
-> public class MyReentrantLock {
->     Thread t = new Thread() {
->         @Override
->         public void run() {
->             ReentrantLock r = new ReentrantLock();
->             // 1.1、第一次尝试获取锁，可以获取成功
->             r.lock();
 >
->             // 1.2、此时锁的重入次数为 1
->             System.out.println("lock() : lock count :" + r.getHoldCount());
->
->             // 2、中断当前线程，通过 Thread.currentThread().isInterrupted() 可以看到当前线程的中断状态为 true
->             interrupt();
->             System.out.println("Current thread is interrupted");
->
->             // 3.1、尝试获取锁，可以成功获取
->             r.tryLock();
->             // 3.2、此时锁的重入次数为 2
->             System.out.println("tryLock() on interrupted thread lock count :" + r.getHoldCount());
->             try {
->                 // 4、打印线程的中断状态为 true，那么调用 lockInterruptibly() 方法就会抛出 InterruptedException 异常
->                 System.out.println("Current Thread isInterrupted:" + Thread.currentThread().isInterrupted());
->                 r.lockInterruptibly();
->                 System.out.println("lockInterruptibly() --NOt executable statement" + r.getHoldCount());
->             } catch (InterruptedException e) {
->                 r.lock();
->                 System.out.println("Error");
->             } finally {
->                 r.unlock();
->             }
->
->             // 5、打印锁的重入次数，可以发现 lockInterruptibly() 方法并没有成功获取到锁
->             System.out.println("lockInterruptibly() not able to Acqurie lock: lock count :" + r.getHoldCount());
->
->             r.unlock();
->             System.out.println("lock count :" + r.getHoldCount());
->             r.unlock();
->             System.out.println("lock count :" + r.getHoldCount());
->         }
->     };
->     public static void main(String str[]) {
->         MyReentrantLock m = new MyReentrantLock();
->         m.t.start();
->     }
-> }
-> ```
->
-> 输出：
->
-> ```BASH
-> lock() : lock count :1
-> Current thread is interrupted
-> tryLock() on interrupted thread lock count :2
-> Current Thread isInterrupted:true
-> Error
-> lockInterruptibly() not able to Acqurie lock: lock count :2
-> lock count :1
-> lock count :0
-> ```
+import java.util.concurrent.locks.ReentrantLock;
+
+public class MyReentrantLock {
+
+    Thread t = new Thread() {
+        @Override
+        public void run() {
+            ReentrantLock r = new ReentrantLock();
+
+            // 1.1、第一次尝试获取锁，可以获取成功
+            r.lock();
+
+            // 1.2、此时锁的重入次数为 1
+            System.out.println("lock() : lock count : " + r.getHoldCount());
+
+            // 2、中断当前线程，此时中断状态为 true
+            interrupt();
+            System.out.println("Current thread is interrupted");
+
+            // 3.1、当前线程已经持有锁，再次尝试获取锁，可以成功获取
+            r.tryLock();
+
+            // 3.2、此时锁的重入次数为 2
+            System.out.println(
+                "tryLock() on interrupted thread lock count : "
+                + r.getHoldCount()
+            );
+
+            try {
+                // 4、检查当前线程的中断状态，此时为 true
+                System.out.println(
+                    "Current Thread isInterrupted: "
+                    + Thread.currentThread().isInterrupted()
+                );
+
+                // 5、由于线程已经被中断，调用 lockInterruptibly()
+                // 会直接抛出 InterruptedException，不会增加锁的重入次数
+                r.lockInterruptibly();
+
+                System.out.println(
+                    "lockInterruptibly() acquired lock, lock count : "
+                    + r.getHoldCount()
+                );
+
+            } catch (InterruptedException e) {
+                System.out.println("Error");
+
+                // 6、捕获异常后，调用 lock() 可以再次获取锁
+                // 此时锁的重入次数从 2 增加到 3
+                r.lock();
+
+            } finally {
+                // 7、释放一次锁，重入次数从 3 变为 2
+                r.unlock();
+            }
+
+            // 8、打印锁的重入次数，此时为 2
+            System.out.println(
+                "lockInterruptibly() not able to acquire lock: lock count : "
+                + r.getHoldCount()
+            );
+
+            // 9、释放第二次获取的锁，重入次数从 2 变为 1
+            r.unlock();
+            System.out.println("lock count : " + r.getHoldCount());
+
+            // 10、释放第一次获取的锁，重入次数从 1 变为 0
+            r.unlock();
+            System.out.println("lock count : " + r.getHoldCount());
+        }
+    };
+
+    public static void main(String[] args) {
+        MyReentrantLock m = new MyReentrantLock();
+        m.t.start();
+    }
+}
 
 关于 **支持超时** 的补充：
 
